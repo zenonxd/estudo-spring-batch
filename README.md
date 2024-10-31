@@ -188,7 +188,10 @@ Representa um processo batch completo, composto por várias etapas (Steps).
 
 Cada Step é uma fase do Job, onde uma tarefa específica é executada (ex.: leitura, processamento e escrita de dados).
 
-## BatchConfig
+## BatchConfig (Modelo básico)
+
+❗Essa classe depois desse exemplo irá mudar, iremos realocar cada método (job, step e tasklet) para pacotes separados,
+[veja aqui](#refatoração-do-hello-world-).
 
 ### Job
 
@@ -236,3 +239,112 @@ public class BatchConfig {
     }
 }
 ```
+
+## Refatoração do Hello World 
+
+Incluiremos um novo parâmetro no JobBuilder. Até o momento não tivemos nenhum problema pois estamos usando um banco H2
+(memória), mas se fosse um MySQL, a medida que fossemos executando esse Job teríamos que ir alterando os parâmetros de 
+execução dele.
+
+Primeira coisa: runIdIncrementer.
+
+Usaremos o ``.incrementer(new RunIdIncrementer())``. Basicamente, a todo Job (a cada execução), ele irá incrementar
+o valor desse RunIdIncrementer.
+
+![img_2.png](img_2.png)
+
+### Step, Job e Tasklet em classes e pacotes diferentes
+
+Não é ideal também manter o Job, Step e Tasklet na mesma classe, afinal um projeto pode ter vários jobs, steps e tasks.
+
+Criar pacote para: step, job, tasklet.
+
+#### Tasklet
+
+Iremos retirar a tasklet também e alocá-lá em uma classe separada no pacote tasklets.
+
+Criar pacote tasklet e criar a classe PrintHelloTasklet (ela será injetada no Step).
+
+```java
+@Component
+@StepScope //falamos que ela está no escopo do Step
+public class PrintHelloTasklet implements Tasklet {
+
+    @Override
+    public RepeatStatus execute(StepContribution contribution, ChunkContext chunkContext) throws Exception {
+        System.out.println("Hello, world!");
+        return RepeatStatus.FINISHED;
+    }
+}
+```
+
+#### Step
+
+Criar classe PrintHelloStepConfig no pacote step.
+
+Veja que a tasklet não está mais com a lambda dentro dela.
+
+**Antes**
+
+```java
+@Bean
+public Step step(JobRepository jobRepository, PlatformTransactionManager transactionManager) {
+    return new StepBuilder("step", jobRepository)
+            .tasklet((StepContribution contribution, ChunkContext chunkContext) -> {
+                System.out.println("Hello, world!");
+                return RepeatStatus.FINISHED;
+                }, transactionManager // gerenciador de transações (neste caso, do H2)
+            ).build();
+}
+```
+
+**Depois**
+
+Como realocamos a tasklet para uma classe a parte, ela também precisa ser injetada dentro do parâmetro do Step.
+
+Passamos dentro dela a tasklet com injeção de dependência e o transaction manager.
+
+```java
+@Configuration
+public class PrintHelloStepConfig {
+
+    //steps podem ser tasklet (mais simples)
+    //ou chunk (mais complexo e elaborado)
+    @Bean
+    public Step printHelloStep(JobRepository jobRepository, PlatformTransactionManager transactionManager, Tasklet printHelloTasklet) {
+        return new StepBuilder("step", jobRepository)
+                .tasklet(printHelloTasklet, transactionManager)
+                .build();
+    }
+}
+```
+
+#### Job
+
+Ficará dentro do pacote job na classe BatchConfig.
+
+Só mudamos o nome do step para printHelloStep.
+
+```java
+@Configuration
+public class BatchConfig {
+
+    @Bean
+    public Job job(JobRepository jobRepository, Step printHelloStep) {
+        return new JobBuilder("job", jobRepository)
+                .start(printHelloStep)
+                .incrementer(new RunIdIncrementer())
+                .build();
+    }
+}
+```
+
+## Usando variáveis no Spring Batch
+
+![img_3.png](img_3.png)
+
+Para rodar isso vamos em configuration e colocar uma enviroment "nome" com o seu valor.
+
+
+
+
