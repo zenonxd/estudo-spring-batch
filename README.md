@@ -172,3 +172,67 @@ Quantos passos ele vai executar? O que cada passo vai fazer?
 7. [O que pensar ao trabalhar com o alto volume de dados? (tempo, integridade, execução, monitoramento)](#o-que-pensar-ao-trabalhar-com-grande-volume-de-dados)
 8. [Lembrar de escalabilidade, disponibilidade e usabilidade](#outras-considerações-ao-trabalhar-com-sistema-batch)
 
+# Parte prática
+
+Criar um projeto com as dependências de spring batch e h2 database.
+
+Criaremos uma classe BatchConfig dentro do pacote config.
+
+Iremos criar um Job e um Step.
+
+## Job
+
+Representa um processo batch completo, composto por várias etapas (Steps).
+
+## Step
+
+Cada Step é uma fase do Job, onde uma tarefa específica é executada (ex.: leitura, processamento e escrita de dados).
+
+## BatchConfig
+
+### Job
+
+Recebe um jobRepository e um step.
+
+Dentro do return new JobBuilder:
+
+O primeiro argumento é nome do job, o segundo passamos o jobRepository. 
+
+O jobRepository é responsável por manter os metadados. Metadados permite que o Framework controle o fluxo de execução.
+
+Damos o start no step e o build.
+
+```java
+@Configuration
+public class BatchConfig {
+
+    @Bean
+    public Job job(JobRepository jobRepository, Step step) {
+        return new JobBuilder("job", jobRepository)
+                .start(step)
+                .build();
+    }
+}
+```
+
+### Step
+
+Steps podem ser **tasklet** (mais simples) ou **chunk** (mais complexo e elaborado).
+
+```java
+@Configuration
+public class BatchConfig {
+
+    //metodo do job acima
+    
+    @Bean
+    public Step step(JobRepository jobRepository, PlatformTransactionManager transactionManager) {
+        return new StepBuilder("step", jobRepository)
+                .tasklet((StepContribution contribution, ChunkContext chunkContext) -> {
+                    System.out.println("Hello, world!");
+                    return RepeatStatus.FINISHED;
+                }, transactionManager // gerenciador de transações (neste caso, do H2)
+                ).build();
+    }
+}
+```
