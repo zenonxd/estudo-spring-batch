@@ -12,8 +12,8 @@ import org.springframework.stereotype.Component;
 @StepScope //falamos que ela está no escopo do Step
 public class PrintHelloTasklet implements Tasklet {
 
-    @Value("${nome}")
-    private String nome;
+    @Value("${name}")
+    private String name;
 
     @Override
     public RepeatStatus execute(StepContribution contribution, ChunkContext chunkContext) throws Exception {
@@ -21,7 +21,7 @@ public class PrintHelloTasklet implements Tasklet {
         //System.out.println("Hello, world!");
 
         //depois
-        System.out.println("Olá " + nome);
+        System.out.println("Olá " + name);
         return RepeatStatus.FINISHED;
     }
 }

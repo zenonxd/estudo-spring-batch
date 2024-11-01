@@ -164,15 +164,17 @@ Quantos passos ele vai executar? O que cada passo vai fazer?
 1. Lembrar dos [tipos de sistema que usam batch](#exemplos-de-sistemas-baseados-em-batch)
 2. A ideia é que se o sistema caia, volte de onde parou;
 3. Os dados são processados em lotes;
-2. Há um grande volume de dados;
-3. É executado sem a interferência humana;
-4. É muito usado para migração e integração de dados;
-5. Diferente do sistema web, os dados não necessariamente estão disponíveis, [veja o motivo](#por-que-os-dados-a-serem-processados-não-estão-disponíveis-em-batch)
-6. Lembrar de [quando usar Sistema Batch](#quando-utilizar-sistemas-batch)
-7. [O que pensar ao trabalhar com o alto volume de dados? (tempo, integridade, execução, monitoramento)](#o-que-pensar-ao-trabalhar-com-grande-volume-de-dados)
-8. [Lembrar de escalabilidade, disponibilidade e usabilidade](#outras-considerações-ao-trabalhar-com-sistema-batch)
+4. Há um grande volume de dados;
+5. É executado sem a interferência humana;
+6. É muito usado para migração e integração de dados;
+7. Diferente do sistema web, os dados não necessariamente estão disponíveis, [veja o motivo](#por-que-os-dados-a-serem-processados-não-estão-disponíveis-em-batch)
+8. Lembrar de [quando usar Sistema Batch](#quando-utilizar-sistemas-batch)
+9. [O que pensar ao trabalhar com o alto volume de dados? (tempo, integridade, execução, monitoramento)](#o-que-pensar-ao-trabalhar-com-grande-volume-de-dados)
+10. [Lembrar de escalabilidade, disponibilidade e usabilidade](#outras-considerações-ao-trabalhar-com-sistema-batch)
 
 # Parte prática
+
+# Projeto 1 - Hello World
 
 Criar um projeto com as dependências de spring batch e h2 database.
 
@@ -343,8 +345,147 @@ public class BatchConfig {
 
 ![img_3.png](img_3.png)
 
-Para rodar isso vamos em configuration e colocar uma enviroment "nome" com o seu valor.
+Para rodar isso vamos em configuration e colocar uma enviroment "nome" com o seu valor ou colocar ela manualmente em
+application.properties:
+
+![img_4.png](img_4.png)
+
+# Resumo parte prática
+
+Precisamos ter pacotes e classes separados para Job, Step e Tasklet.
+
+Vamos abordar essas classes agora explicando-as.
+
+## BatchConfig (Job)
+
+Será encarregada de criar e configurar um Job no SpringBatch.
+
+![img_5.png](img_5.png)
+
+### Parâmetros do método
+
+JobRepository: Irá gerenciar a persistência e o status do Job e de seus Steps. 
+
+❗ Ele é responsável por amarzenar o estado do Job no banco de dados, permitindo retornar de onde parou em caso de falha.
+
+Step printHelloStep: Step é uma unidade de trabalho que fica dentro de um Job.
+
+Cada Step pode conter uma lógica de negócio. O Job irá executar os Steps na ordem que forem definidos.
+
+### JobBuilder
+
+Esse ``new JobBuilder`` cria uma instância de JobBuilder, ficará responsável por **configurar o Job**.
+
+O primeiro parâmetro é o nome do Job.
+
+jobRepository: passa o JobRepository necessário para o Spring Batch gerenciar o estado do Job e seus Steps.
+
+### .start(printHelloStep)
+
+Define o ``printHelloStep`` como primeiro (ou único) Step a ser executado por este Job. Provavelmente, esse Step
+conterá um Tasklet (responsável por executar uma unidade de trabalho específica).
+
+### .incrementer(new RunIdIncrementer())
+
+``RunIdIncrementer`` é um incrementador de identificador de execução do Job. No Batch, cada execução de um Job pode ter
+um ID único. Esse ``RunIdIncrementer``, ajuda a garantir que cada execução tenha seu próprio ID (que será incremental).
+
+Isso é útil para reexecutar um Job sem que o Spring Batch ache que ele já foi concluído e, portanto, o ignore.
+
+### .build()
+
+Finaliza a configuração do Job e o converte em uma instância de Job que será gerenciada pelo Spring.
+
+### Exemplo de como o código funciona
+
+Quando o Spring Batch inicia, ele utiliza essa configuração para definir um Job chamado "job":
+
+1. O Job começa executando o Step printHelloStep.
+2. printHelloStep executa a lógica especificada em um Tasklet (ou processo de chunk, se configurado dessa forma).
+3. Após a execução do Step, o Job termina.
+4. Cada execução do Job recebe um ID exclusivo, permitindo reexecutar o Job sem conflitos de identificadores.
+Resumo
+5. Esse código define um Job básico com um único Step e um incrementador de ID. O BatchConfig cria o Job como um bean, 
+permitindo que ele seja gerenciado automaticamente pelo framework Spring Batch e que seja configurado de maneira modular.
+
+## StepConfig
+
+![img_6.png](img_6.png)
+
+### Parâmetros do Método
+
+JobRepository: o repositório de Jobs é necessário para armazenar e gerenciar o estado de execução do Step e do Job
+ao qual ele pertence.
+
+PlatformTransactionManager: é um gerenciador de transações. É necessário para que o Spring Batch gerencie-as durante
+a execução do Step. ❗**Vai garantir consistência de dados em caso de falhas**!
+
+Tasklet printHelloTasklet: É o tasklet executado pelo Step. Contém uma lógica específica que o Step realizará.
+
+Como é um Tasklet, essa lógica é simples e executada uma única vez. Se fosse chunks, seria um processamento mais longo.
+
+### StepBuilder
+
+new StepBuilder("step", jobRepository): cria um Step chamado "step" usando o stepBuilder que ajudará a configurar os
+detalhes do Step.
+
+jobRepository: este repositório de jobs é passado para o StepBuilder para permitir que o Spring Batch gerencie e 
+persista o estado de execução deste Step.
+
+### .tasklet(printHelloTasklet, transactionManager)
+
+Define o tasklet que será executado pelo Step. Neste caso, o printHelloTasklet é a lógica que será utilizada.
+
+transactionManager: é o gerenciador de transações. Usado para garantir que a execução do tasklet seja **TRANSACIONAL**,
+❗permitindo que seja revertido em caso de falha.
+
+### .build()
+
+Este método finaliza a configuração e cria uma instância de Step. Esse Step é então exposto como um bean no contexto Spring.
+
+### Exemplo do Funcionamento
+
+Ao configurar um Job (BatchConfig), esse step poderá ser adicionado ao Job para ele execute o Tasklet (printHelloTasklet).
+
+1. Quando o Job inicia, ele chama o Step printHelloStep.
+2. O Step executa o Tasklet printHelloTasklet, que realiza uma tarefa específica, como imprimir uma mensagem.
+3. O PlatformTransactionManager garante que a execução do Tasklet seja transacional. Se houver uma falha, as operações realizadas pelo Tasklet poderão ser revertidas.
+4. Após a execução do Tasklet, o Step termina, e o Job continua para o próximo Step (se houver).
+
+### Resumo
+
+Esse código configura um Step simples (printHelloStep) com um Tasklet (printHelloTasklet). Esse Step é transacional e 
+controlado pelo PlatformTransactionManager. A configuração é ideal para tarefas pequenas e autônomas que podem ser 
+concluídas em uma única execução e para Jobs que necessitam de Steps com baixa complexidade.
 
 
 
+## Tasklet
 
+![img_7.png](img_7.png)
+
+1. Injeção de Dependência com @Value:
+
+Anotação @Value("${name}") instrui o Spring a injetar o valor da propriedade name definida no arquivo 
+application.properties (ou application.yml).
+
+Para isso funcionar, você precisa definir a propriedade name no seu arquivo de propriedades, assim:
+
+```properties
+name=João
+```
+
+2. Método execute:
+
+Este método faz parte de um Tasklet do Spring Batch. Um Tasklet é uma interface do Spring Batch que define uma operação
+única ou um "passo" em um job batch.
+
+A linha System.out.println("Olá " + name); imprimirá "Olá " + seguido do valor de name (neste exemplo, "João").
+
+3. Valor de Retorno:
+
+O método execute retorna RepeatStatus.FINISHED, indicando que o Tasklet completou a sua tarefa e não precisa ser 
+repetido.
+
+Estes códigos são códigos mais básicos e introdutórios. A seguir, entraremos em um projeto onde iremos fazer uma
+requisição em uma API remota, buscar esses dados, processá-los e gravá-los em um banco de dados (MysQL).
